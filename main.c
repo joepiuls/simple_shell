@@ -1,134 +1,90 @@
 #include "main.h"
 
-void sig_handler(int sig);
-int execute(char **args, char **front);
-
 /**
- * sig_handler - Print a new prompt upon a signal.
- * @sig: The signal.
+ * main - Simple Shell 
+ * @argc: Arg Count
+ * @argv:Arg Value
+ * Return: Exit Value By Status
  */
-void sig_handler(int sig)
+
+int main(__attribute__((unused)) int argc, char **argv)
 {
-	char *new_prompt = "\n$ ";
+	char *input, **cmd;
+	int counter = 0, statue = 1, st = 0;
 
-	(void)sig;
-	signal(SIGINT, sig_handler);
-	write(STDIN_FILENO, new_prompt, 3);
-}
-
-/**
- * execute - Executes a command in a child pro.
- * @args:  array of arguments.
- * @front: A double pointer to the beginning of args.
- *
- * Return: If an error occurs - a corresponding error code.
- *         O/w - The exit value of the last executed command.
- */
-int execute(char **args, char **front)
-{
-	pid_t child_pid;
-	int sts, flg = 0, ret = 0;
-	char *command = args[0];
-
-	if (command[0] != '/' && command[0] != '.')
+	if (argv[1] != NULL)
+		read_file(argv[1], argv);
+	signal(SIGINT, signal_to_handel);
+	while (statue)
 	{
-		flg = 1;
-		command = get_location(command);
-	}
-
-	if (!command || (access(command, F_OK) == -1))
-	{
-		if (errno == EACCES)
-			ret = (create_error(args, 126));
-		else
-			ret = (create_error(args, 127));
-	}
-	else
-	{
-		child_pid = fork();
-		if (child_pid == -1)
+		counter++;
+		if (isatty(STDIN_FILENO))
+			prompt();
+		input = _getline();
+		if (input[0] == '\0')
 		{
-			if (flg)
-				free(command);
-			perror("Error child:");
-			return (1);
+			continue;
 		}
-		if (child_pid == 0)
+		history(input);
+		cmd = parse_cmd(input);
+		if (_strcmp(cmd[0], "exit") == 0)
 		{
-			execve(command, args, environ);
-			if (errno == EACCES)
-				ret = (create_error(args, 126));
-			free_env();
-			free_args(args, front);
-			free_alias_list(aliases);
-			_exit(ret);
+			exit_bul(cmd, input, argv, counter);
+		}
+		else if (check_builtin(cmd) == 0)
+		{
+			st = handle_builtin(cmd, st);
+			free_all(cmd, input);
+			continue;
 		}
 		else
 		{
-			wait(&sts);
-			ret = WEXITSTATUS(sts);
+			st = check_cmd(cmd, input, counter, argv);
+
 		}
+		free_all(cmd, input);
 	}
-	if (flg)
-		free(command);
-	return (ret);
+	return (statue);
 }
-
 /**
- * main - Runs a simple UNIX command interpreter.
- * @argc: The number of arguments supplied to the program.
- * @argv: An array of pointers to the arguments.
+ * check_builtin - check builtin
  *
- * Return: The return value of the last executed command.
+ * @cmd:command check
+ * Return: 0 Succes -1 Fail
  */
-int main(int argc, char *argv[])
+int check_builtin(char **cmd)
 {
-	int ret = 0, retn;
-	int *exe_ret = &retn;
-	char *prt = "$ ", *new_line = "\n";
-
-	name = argv[0];
-	hist = 1;
-	aliases = NULL;
-	signal(SIGINT, sig_handler);
-
-	*exe_ret = 0;
-	environ = _copyenv();
-	if (!environ)
-		exit(-100);
-
-	if (argc != 1)
+	bul_t fun[] = {
+		{"cd", NULL},
+		{"help", NULL},
+		{"echo", NULL},
+		{"history", NULL},
+		{NULL, NULL}
+	};
+	int i = 0;
+		if (*cmd == NULL)
 	{
-		ret = proc_file_commands(argv[1], exe_ret);
-		free_env();
-		free_alias_list(aliases);
-		return (*exe_ret);
+		return (-1);
 	}
 
-	if (!isatty(STDIN_FILENO))
+	while ((fun + i)->command)
 	{
-		while (ret != END_OF_FILE && ret != EXIT)
-			ret = handle_args(exe_ret);
-		free_env();
-		free_alias_list(aliases);
-		return (*exe_ret);
+		if (_strcmp(cmd[0], (fun + i)->command) == 0)
+			return (0);
+		i++;
 	}
+	return (-1);
+}
+/**
+ * creat_envi - Creat Array of Enviroment Variable
+ * @envi: Array of Enviroment Variable
+ * Return: Void
+ */
+void creat_envi(char **envi)
+{
+	int i;
 
-	while (1)
-	{
-		write(STDOUT_FILENO, prt, 2);
-		ret = handle_args(exe_ret);
-		if (ret == END_OF_FILE || ret == EXIT)
-		{
-			if (ret == END_OF_FILE)
-				write(STDOUT_FILENO, new_line, 1);
-			free_env();
-			free_alias_list(aliases);
-			exit(*exe_ret);
-		}
-	}
-
-	free_env();
-	free_alias_list(aliases);
-	return (*exe_ret);
+	for (i = 0; environ[i]; i++)
+		envi[i] = _strdup(environ[i]);
+	envi[i] = NULL;
 }
